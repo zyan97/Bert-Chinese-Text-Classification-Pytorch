@@ -27,6 +27,7 @@ class Config(object):
         self.bert_path = './bert_pretrain'
         self.tokenizer = BertTokenizer.from_pretrained(self.bert_path)
         self.hidden_size = 768
+        self.predict = True
 
 
 class Model(nn.Module):
