@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from sklearn import metrics
 import time
 from utils import get_time_dif
-from pytorch_pretrained_bert.optimization import BertAdam
+from pytorch_pretrained.optimization import BertAdam
 
 
 # 权重初始化，默认xavier
@@ -43,6 +43,7 @@ def train(config, model, train_iter, dev_iter, test_iter):
                          t_total=len(train_iter) * config.num_epochs)
     total_batch = 0  # 记录进行到多少batch
     dev_best_loss = float('inf')
+    dev_best_acc = float('-inf')
     last_improve = 0  # 记录上次验证集loss下降的batch数
     flag = False  # 记录是否很久没有效果提升
     model.train()
@@ -54,13 +55,15 @@ def train(config, model, train_iter, dev_iter, test_iter):
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
             optimizer.step()
-            if total_batch % 100 == 0:
+            if total_batch % 50 == 0:
                 # 每多少轮输出在训练集和验证集上的效果
                 true = labels.data.cpu()
                 predic = torch.max(outputs.data, 1)[1].cpu()
                 train_acc = metrics.accuracy_score(true, predic)
                 dev_acc, dev_loss = evaluate(config, model, dev_iter)
-                if dev_loss < dev_best_loss:
+                # if dev_loss < dev_best_loss:
+                if dev_acc > dev_best_acc:
+                    dev_best_acc = dev_acc
                     dev_best_loss = dev_loss
                     torch.save(model.state_dict(), config.save_path)
                     improve = '*'
@@ -79,7 +82,8 @@ def train(config, model, train_iter, dev_iter, test_iter):
                 break
         if flag:
             break
-    test(config, model, test_iter)
+    if not config.predict:
+        test(config, model, test_iter)
 
 
 def test(config, model, test_iter):
@@ -119,3 +123,17 @@ def evaluate(config, model, data_iter, test=False):
         confusion = metrics.confusion_matrix(labels_all, predict_all)
         return acc, loss_total / len(data_iter), report, confusion
     return acc, loss_total / len(data_iter)
+
+def predict(config, model, test_iter):
+    model.load_state_dict(torch.load(config.save_path))
+    model.eval()
+    start_time = time.time()
+    predict_all = np.array([], dtype=int)
+    with torch.no_grad():
+        for texts, labels in test_iter:
+            outputs = model(texts)
+            predic = torch.max(outputs.data, 1)[1].cpu().numpy()
+            predict_all = np.append(predict_all, predic)
+    time_dif = get_time_dif(start_time)
+    print("Time usage:", time_dif)
+    return predict_all
